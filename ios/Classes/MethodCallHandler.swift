@@ -56,6 +56,8 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
       closeCamera(args: args, result: result)
     } else if call.method == "detectImage" || call.method == "classifyImage" {
       predictOnImage(args: args, result: result)
+    } else if call.method == "detect" {
+      detect(args: args, result: result)
     }
   }
 
@@ -162,6 +164,33 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
       completion: { recognitions in
         result(recognitions)
       })
+  }
+
+  private func detect(args: [String: Any], result: @escaping FlutterResult) {
+    let image = convertToCIImage(call.arguments)
+    predictor?.predictOnImage(
+      image: image!,
+      completion: { recognitions in
+        result(recognitions)
+      })
+  }
+
+  private func convertToCIImage(_ arguments: Any?) -> CIImage? {
+      guard let args = arguments as? [String: Any],
+            let width = args["width"] as? Int,
+            let height = args["height"] as? Int,
+            let imageData = args["imageData"] as? [UInt8] else {
+          return
+      }
+      let data = Data(imageData)
+
+      let rgbImage = CIImage(bitmapData: data,
+                            bytesPerRow: width * 4,
+                            size: CGSize(width: width, height: height),
+                            format: .BGRA8,
+                            colorSpace: CGColorSpaceCreateDeviceRGB())
+
+      return rgbImage
   }
 
   func on(predictions: [[String: Any]]) {

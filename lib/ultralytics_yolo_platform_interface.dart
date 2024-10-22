@@ -87,6 +87,11 @@ abstract class UltralyticsYoloPlatform extends PlatformInterface {
     throw UnimplementedError('detectImage has not been implemented.');
   }
 
+  /// Detect objects in the given [imageData].
+  Future<List<DetectedObject?>?> detect(List<int> imageData, int width, int height) {
+    throw UnimplementedError('detect has not been implemented.');
+  }
+
   /// Stream of classification results.
   Stream<List<ClassificationResult?>?> get classificationResultStream {
     throw UnimplementedError(

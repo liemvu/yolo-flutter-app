@@ -5,6 +5,7 @@ import static com.ultralytics.ultralytics_yolo.CameraPreview.CAMERA_PREVIEW_SIZE
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.util.DisplayMetrics;
 
 import androidx.annotation.NonNull;
@@ -20,6 +21,7 @@ import com.ultralytics.ultralytics_yolo.predict.detect.Detector;
 import com.ultralytics.ultralytics_yolo.predict.detect.TfliteDetector;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -87,6 +89,9 @@ public class MethodCallHandler implements MethodChannel.MethodCallHandler {
                 break;
             case "detectImage":
                 detectImage(call, result);
+                break;
+            case "detect":
+                detectBitmap(call, result);
                 break;
             case "classifyImage":
                 classifyImage(call, result);
@@ -284,36 +289,48 @@ public class MethodCallHandler implements MethodChannel.MethodCallHandler {
             if (imagePathObject != null) {
                 final String imagePath = (String) imagePathObject;
                 Bitmap bitmap = BitmapFactory.decodeFile(imagePath);
-                final float[][] res = (float[][]) predictor.predict(bitmap);
-
-                float scaleFactor = widthDp / bitmap.getWidth();
-                float newHeight = bitmap.getHeight() * scaleFactor;
-                List<Map<String, Object>> objects = new ArrayList<>();
-                for (float[] obj : res) {
-                    Map<String, Object> objectMap = new HashMap<>();
-
-                    float x = obj[0] * widthDp;
-                    float y = obj[1] * newHeight;
-                    float width = obj[2] * widthDp;
-                    float height = obj[3] * newHeight;
-                    float confidence = obj[4];
-                    int index = (int) obj[5];
-                    String label = index < predictor.labels.size() ? predictor.labels.get(index) : "";
-
-                    objectMap.put("x", x);
-                    objectMap.put("y", y);
-                    objectMap.put("width", width);
-                    objectMap.put("height", height);
-                    objectMap.put("confidence", confidence);
-                    objectMap.put("index", index);
-                    objectMap.put("label", label);
-
-                    objects.add(objectMap);
-                }
-
-                result.success(objects);
+                result.success(detect(bitmap));
+            } else {
+                result.success(Collections.emptyList());
             }
         }
+    }
+
+    private void detectBitmap(MethodCall call, MethodChannel.Result result) {
+        if (predictor != null) {
+            Bitmap bitmap = convertToBitmap(call.arguments);
+            result.success(detect(bitmap));
+        }
+    }
+
+    private List<Map<String, Object>> detect(Bitmap bitmap) {
+        final float[][] res = (float[][]) predictor.predict(bitmap);
+
+        float scaleFactor = widthDp / bitmap.getWidth();
+        float newHeight = bitmap.getHeight() * scaleFactor;
+        List<Map<String, Object>> objects = new ArrayList<>();
+        for (float[] obj : res) {
+            Map<String, Object> objectMap = new HashMap<>();
+
+            float x = obj[0] * widthDp;
+            float y = obj[1] * newHeight;
+            float width = obj[2] * widthDp;
+            float height = obj[3] * newHeight;
+            float confidence = obj[4];
+            int index = (int) obj[5];
+            String label = index < predictor.labels.size() ? predictor.labels.get(index) : "";
+
+            objectMap.put("x", x);
+            objectMap.put("y", y);
+            objectMap.put("width", width);
+            objectMap.put("height", height);
+            objectMap.put("confidence", confidence);
+            objectMap.put("index", index);
+            objectMap.put("label", label);
+
+            objects.add(objectMap);
+        }
+        return objects;
     }
 
     private void classifyImage(MethodCall call, MethodChannel.Result result) {
@@ -346,5 +363,65 @@ public class MethodCallHandler implements MethodChannel.MethodCallHandler {
             final double factor = (double) factorObject;
             cameraPreview.setScaleFactor(factor);
         }
+    }
+
+    private Bitmap convertToBitmap(Object arguments) {
+        // Parse the arguments
+        Map<String, Object> args = (Map<String, Object>) arguments;
+        int width = (int) args.get("width");
+        int height = (int) args.get("height");
+        List<Integer> imageData = (List<Integer>) args.get("imageData");
+
+        // Convert List<Integer> to byte[]
+        byte[] yData = new byte[width * height];
+        byte[] uData = new byte[(width / 2) * (height / 2)];
+        byte[] vData = new byte[(width / 2) * (height / 2)];
+
+        // Assuming the image data is packed in a specific format (YUV_420_888)
+        // This will depend on how you're sending the data from Flutter
+        // Fill Y data
+        for (int i = 0; i < yData.length; i++) {
+            yData[i] = (byte) (int) imageData.get(i);
+        }
+
+        // Fill U data
+        for (int i = 0; i < uData.length; i++) {
+            uData[i] = (byte) (int) imageData.get(yData.length + i);
+        }
+
+        // Fill V data
+        for (int i = 0; i < vData.length; i++) {
+            vData[i] = (byte) (int) imageData.get(yData.length + uData.length + i);
+        }
+
+
+        // Create a bitmap from YUV data
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        convertYUVtoBitmap(yData, uData, vData, width, height, bitmap);
+        return bitmap;
+    }
+
+    private void convertYUVtoBitmap(byte[] yData, byte[] uData, byte[] vData, int width, int height, Bitmap bitmap) {
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+                int yIndex = y * width + x;
+                int uIndex = (y / 2) * (width / 2) + (x / 2);
+                int vIndex = uIndex;
+
+                int yValue = (0xff & yData[yIndex]) - 16;
+                int uValue = (0xff & uData[uIndex]) - 128;
+                int vValue = (0xff & vData[vIndex]) - 128;
+
+                int r = clamp((int) (1.164 * yValue + 1.596 * vValue));
+                int g = clamp((int) (1.164 * yValue - 0.813 * vValue - 0.391 * uValue));
+                int b = clamp((int) (1.164 * yValue + 2.018 * uValue));
+
+                bitmap.setPixel(x, y, Color.argb(255, r, g, b));
+            }
+        }
+    }
+
+    private int clamp(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 }

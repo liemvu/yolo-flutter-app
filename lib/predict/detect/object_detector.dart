@@ -29,4 +29,8 @@ class ObjectDetector extends Predictor {
   /// Detects objects from the given [imagePath].
   Future<List<DetectedObject?>?> detect({required String imagePath}) =>
       super.ultralyticsYoloPlatform.detectImage(imagePath);
+
+  /// Detects objects from the given [imageData].
+  Future<List<DetectedObject?>?> detectImage(List<int> imageData, int width, int height) =>
+      super.ultralyticsYoloPlatform.detect(imageData, width, height);
 }

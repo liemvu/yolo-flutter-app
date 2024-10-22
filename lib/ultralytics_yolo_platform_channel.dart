@@ -158,4 +158,26 @@ class PlatformChannelUltralyticsYolo implements UltralyticsYoloPlatform {
 
     return objects;
   }
+
+  @override
+  Future<List<DetectedObject?>?> detect(
+      List<int> imageData, int width, int height) async {
+    final result = await methodChannel.invokeMethod<List<Object?>>('detect', {
+      'imageData': imageData,
+      'width': width,
+      'height': height,
+    }).catchError((_) {
+      return <DetectedObject?>[];
+    });
+
+    final objects = <DetectedObject>[];
+
+    result?.forEach((json) {
+      json = json as Map<dynamic, dynamic>?;
+      if (json == null) return;
+      objects.add(DetectedObject.fromJson(json));
+    });
+
+    return objects;
+  }
 }
